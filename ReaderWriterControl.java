@@ -1,45 +1,30 @@
-
 public class ReaderWriterControl {
-    int leitoresAtivos = 0;
-    boolean escritorAtivo = false;
+    private int readers = 0;
+    private boolean writer = false;
 
-    boolean condicaoEscrita() {
-        return leitoresAtivos == 0 && !escritorAtivo;
-    }
-
-    boolean condicaoLeitura() {
-        return !escritorAtivo;
-    }
-
-    synchronized void iniciarLeitura() {
-        while (!condicaoLeitura()) {
-            try {
-                wait();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+    public synchronized void startRead() throws InterruptedException {
+        while (writer) {
+            wait();
         }
-        leitoresAtivos++;
+        readers++;
     }
 
-    synchronized void finalizarLeitura() {
-        leitoresAtivos--;
-        notifyAll();
-    }
-
-    synchronized void iniciarEscrita() {
-        while (!condicaoEscrita()) {
-            try {
-                wait();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+    public synchronized void endRead() {
+        readers--;
+        if (readers == 0) {
+            notifyAll();
         }
-        escritorAtivo = true;
     }
 
-    synchronized void finalizarEscrita() {
-        escritorAtivo = false;
+    public synchronized void startWrite() throws InterruptedException {
+        while (readers > 0 || writer) {
+            wait();
+        }
+        writer = true;
+    }
+
+    public synchronized void endWrite() {
+        writer = false;
         notifyAll();
     }
 }

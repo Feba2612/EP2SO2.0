@@ -1,70 +1,80 @@
-
-import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class Main {
-    private static SimpleLock lock; // Arquivo: SimpleLock.java
-    private static ReaderWriterControl controlador; // Arquivo: ReaderWriterControl.java
-    private static DatabaseStructure bd; // Arquivo: DatabaseStructure.java
-    private static RandomNumber numAleatorio; // Arquivo: RandomNumber.java
-    private static Thread[] threads;
-    private static final int totalProporcoes = 101;
-    private static final int execucoesPorProporcao = 50;
+    public static void main(String[] args) throws IOException {
+        DatabaseStructure db = new DatabaseStructure("bd.txt");
+        int numExecutions = 50;
+        int numThreads = 100;
 
-    public static void main(String[] args) throws FileNotFoundException, InterruptedException {
-        lock = new SimpleLock(); // Uso do Lock
-        controlador = new ReaderWriterControl(); // Controle de leitores e escritores
-        bd = new DatabaseStructure(); // Estrutura do Banco de Dados
+        // Controle com ReaderWriterControl
+        System.out.println("Simulação com controle de leitores/escritores:");
+        long startControl = System.nanoTime();
+        for (int i = 0; i <= numThreads; i++) {
+            int readers = i;
+            int writers = numThreads - i;
+            double averageTime = runSimulation(db, readers, writers, numExecutions, true);
+            System.out.printf("Proporção: %d Readers, %d Writers - Tempo médio: %.2f ms%n", readers, writers, averageTime);
+        }
+        long endControl = System.nanoTime();
+        double totalTimeControl = (endControl - startControl) / 1_000_000_000.0 / 60.0;
+        System.out.printf("Tempo final: %.2f min%n%n", totalTimeControl);
 
-        for (int k = 0; k < 2; k++) { // 2 tipos de implementação
-            String modoExecucao = (k == 0) ? "com controle de leitores/escritores" : "sem controle de leitores/escritores";
-            System.out.println("\nSimulação " + modoExecucao + ":");
+        // Controle sem ReaderWriterControl (usando SimpleLock)
+        System.out.println("Simulação sem controle de leitores/escritores:");
+        long startNoControl = System.nanoTime();
+        for (int i = 0; i <= numThreads; i++) {
+            int readers = i;
+            int writers = numThreads - i;
+            double averageTime = runSimulation(db, readers, writers, numExecutions, false);
+            System.out.printf("Proporção: %d Readers, %d Writers - Tempo médio: %.2f ms%n", readers, writers, averageTime);
+        }
+        long endNoControl = System.nanoTime();
+        double totalTimeNoControl = (endNoControl - startNoControl) / 1_000_000_000.0 / 60.0;
+        System.out.printf("Tempo final: %.2f min%n", totalTimeNoControl);
+    }
 
-            long inicio = System.currentTimeMillis();
+    /**
+     * Método para executar a simulação com ou sem controle de leitores/escritores.
+     */
+    private static double runSimulation(DatabaseStructure db, int numReaders, int numWriters, int numExecutions, boolean useControl) {
+        long totalDuration = 0;
+        for (int exec = 0; exec < numExecutions; exec++) {
+            ReaderWriterControl control = useControl ? new ReaderWriterControl() : null;
+            SimpleLock lock = useControl ? null : new SimpleLock();
 
-            for (int i = 0; i < totalProporcoes; i++) {
-                int tempoTotal = 0;
-
-                for (int j = 0; j < execucoesPorProporcao; j++) {
-                    bd.inicializarBD(); // Reinicializando o BD
-                    numAleatorio = new RandomNumber(); // Números aleatórios
-                    criarThreads(i, k + 1); // Cria as threads para leitores/escritores
-
-                    long tempoInicial = System.currentTimeMillis();
-                    iniciarThreads(); // Inicia as threads
-                    esperarThreads(); // Aguarda o término das threads
-                    long tempoFinal = System.currentTimeMillis();
-
-                    tempoTotal += (tempoFinal - tempoInicial);
-                }
-
-                double tempoMedio = tempoTotal / (double) execucoesPorProporcao;
-                System.out.printf("Proporção: %d Readers, %d Writers - Tempo médio: %.2f ms%n", (100 - i), i, tempoMedio);
+            List<Thread> threads = new ArrayList<>();
+            for (int i = 0; i < numReaders; i++) {
+                threads.add(new Thread(new Reader(db, control, lock)));
+            }
+            for (int i = 0; i < numWriters; i++) {
+                threads.add(new Thread(new Writer(db, control, lock)));
             }
 
-            long fim = System.currentTimeMillis();
-            System.out.println("\nTempo final " + ((fim - inicio) / 60000) + " min");
-        }
-    }
+            // Embaralhar a lista de threads para distribuição aleatória
+            Collections.shuffle(threads);
 
-    private static void criarThreads(int qtdEscritores, int modoExecucao) throws FileNotFoundException {
-        threads = new Thread[100];
-        for (int i = 0; i < qtdEscritores; i++) {
-            threads[i] = new Thread(new Escritor(i + 1, controlador, lock, modoExecucao)); // Escritores
-        }
-        for (int i = qtdEscritores; i < 100; i++) {
-            threads[i] = new Thread(new Leitor(i + 1, controlador, lock, modoExecucao)); // Leitores
-        }
-    }
+            // Medir o tempo de execução
+            long start = System.nanoTime();
+            for (Thread thread : threads) {
+                thread.start();
+            }
+            for (Thread thread : threads) {
+                try {
+                    thread.join();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            long end = System.nanoTime();
 
-    private static void iniciarThreads() {
-        for (Thread t : threads) {
-            t.start(); // Inicia todas as threads
+            // Calcular a duração da execução
+            totalDuration += (end - start) / 1_000_000;
         }
-    }
 
-    private static void esperarThreads() throws InterruptedException {
-        for (Thread t : threads) {
-            t.join(); // Aguarda o término de todas as threads
-        }
+        // Calcular o tempo médio de execução
+        return totalDuration / (double) numExecutions;
     }
 }
